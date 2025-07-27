@@ -1,12 +1,10 @@
-// frontend/src/components/NomeAlert.js
-export default function NomeAlert({ nome }) {
-  return nome ? (
-    <div className="alert alert-success text-center">
-      Olá <strong>{nome}</strong>! Escolha o que você vai levar:
-    </div>
-  ) : (
-    <div className="alert alert-warning text-center">
-      Por favor, defina seu nome com: <code>localStorage.setItem("nome", "SeuNome")</code>
+export default function NomeAlert({ nome, onTrocar }) {
+  return (
+    <div className="alert alert-success d-flex justify-content-between align-items-center">
+      <span className="mb-0">Participando como: <strong>{nome}</strong></span>
+      <button className="btn btn-outline-secondary btn-sm" onClick={onTrocar}>
+        Trocar nome
+      </button>
     </div>
   );
 }

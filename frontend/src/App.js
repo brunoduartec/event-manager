@@ -22,6 +22,12 @@ function App() {
       });
   }, [nome]);
 
+
+  const handleTrocarNome = () => {
+  localStorage.removeItem("nome");
+  setNome("");
+};
+
   const handleLevar = (item) => {
     fetch(`${API_URL}/items/${encodeURIComponent(item)}`, {
       method: "PUT",
@@ -66,7 +72,10 @@ function App() {
   return (
     <main className="container py-4">
       <Header />
-      <NomeAlert nome={nome} />
+      <NomeAlert 
+        nome={nome}
+        onTrocar={handleTrocarNome}
+      />
       <ItemTable
         items={items}
         nome={nome}
