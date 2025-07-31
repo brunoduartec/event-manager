@@ -36,13 +36,18 @@ terraform init
 echo "✅ Executando Terraform Apply..."
 terraform apply -auto-approve
 
-echo "🔄 Atualizando index.html com URL da API..."
-
+echo "🌐 Atualizando .env.production com a URL da API..."
 API_URL=$(terraform output -raw pizza_api_url)
+cd ../frontend
+
+echo "REACT_APP_API_URL=$API_URL" > .env.production
+
+echo "⚛️ Instalando dependências e buildando frontend React..."
+npm install
+npm run build
+
+cd ../infra
 NOME_DO_SEU_BUCKET=$(terraform output -raw s3_bucket_name)
 
-# Substitui o marcador __API_URL__ pelo valor real no arquivo index.html
-sed "s|__API_URL__|$API_URL|g" ../frontend/index.template.html > ../frontend/index.html
-
-echo "📤 Subindo index.html para o S3..."
-aws s3 cp ../frontend/index.html s3://$NOME_DO_SEU_BUCKET/index.html
+echo "📤 Subindo build do React para o S3..."
+aws s3 sync ../frontend/build/ s3://$NOME_DO_SEU_BUCKET --delete

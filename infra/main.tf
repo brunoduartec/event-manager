@@ -2,18 +2,6 @@ provider "aws" {
   region = "sa-east-1"
 }
 
-data "local_file" "raw_index" {
-  filename = "${path.module}/../frontend/index.html"
-}
-
-locals {
-  index_with_api = replace(
-    data.local_file.raw_index.content,
-    "__API_URL__",
-    "${aws_apigatewayv2_api.http_api.api_endpoint}/${aws_apigatewayv2_stage.prod.name}"
-  )
-}
-
 resource "random_id" "suffix" {
   byte_length = 4
 }
@@ -72,7 +60,7 @@ resource "aws_lambda_function" "get_items" {
   filename         = "${path.module}/lambda/get_items.zip"
   function_name    = "get_items"
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
   source_code_hash = filebase64sha256("${path.module}/lambda/get_items.zip")
 }
@@ -81,7 +69,7 @@ resource "aws_lambda_function" "add_item" {
   filename         = "${path.module}/lambda/add_item.zip"
   function_name    = "add_item"
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
   source_code_hash = filebase64sha256("${path.module}/lambda/add_item.zip")
 }
@@ -90,7 +78,7 @@ resource "aws_lambda_function" "update_item" {
   filename         = "${path.module}/lambda/update_item.zip"
   function_name    = "update_item"
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
   source_code_hash = filebase64sha256("${path.module}/lambda/update_item.zip")
 }
@@ -99,7 +87,7 @@ resource "aws_lambda_function" "patch_item" {
   filename         = "${path.module}/lambda/patch_item.zip"
   function_name    = "patch_item"
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
   source_code_hash = filebase64sha256("${path.module}/lambda/patch_item.zip")
 }
@@ -253,6 +241,7 @@ resource "aws_s3_bucket_policy" "pizza_site_policy" {
     }]
   })
 }
+
 
 # Outputs
 output "s3_static_site_url" {
