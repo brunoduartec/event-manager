@@ -5,15 +5,22 @@ const docClient = new AWS.DynamoDB.DocumentClient({ convertEmptyValues: true });
 exports.handler = async (event) => {
   const item = decodeURIComponent(event.pathParameters.item);
   const body = JSON.parse(event.body);
-  const { quantidade, unidade, quemVaiLevar } = body;
+  const { quantidade, unidade_padrao, unidade_medida, quemVaiLevar } = body;
 
   const schema = Joi.object({
     quantidade: Joi.number().integer().min(1).optional(),
-    unidade: Joi.string().min(1).optional(),
-    quemVaiLevar: Joi.array().items(Joi.string().min(1)).optional()
+    unidade_padrao: Joi.string().min(1).optional(),
+    unidade_medida: Joi.string().min(1).optional(),
+
+    quemVaiLevar: Joi.array().items(
+      Joi.object({
+        nome: Joi.string().min(1).required(),
+        quantidade: Joi.number().integer().min(1).required()
+      })
+    ).optional()
   });
 
-  const { error } = schema.validate({ quantidade, unidade, quemVaiLevar });
+  const { error } = schema.validate({ quantidade, unidade_padrao, unidade_medida, quemVaiLevar });
   if (error) {
     return {
       statusCode: 400,
@@ -22,26 +29,33 @@ exports.handler = async (event) => {
     };
   }
 
-  let UpdateExpression = [];
-  let ExpressionAttributeValues = {};
+  // Atualiza quemVaiLevar como array de objetos {nome, quantidade}
+  let updateFields = {};
+  if (unidade !== undefined) updateFields.unidade = unidade;
 
-  if (quantidade !== undefined) {
-    UpdateExpression.push("quantidade = :q");
-    ExpressionAttributeValues[":q"] = quantidade;
+  if (quemVaiLevar && Array.isArray(quemVaiLevar)) {
+    // Busca o item atual
+    const data = await docClient.get({ TableName: "PizzaPartyItems", Key: { item } }).promise();
+    let lista = Array.isArray(data.Item?.quemVaiLevar) ? data.Item.quemVaiLevar : [];
+    const totalDisponivel = data.Item?.quantidade || 0;
+    // Atualiza ou adiciona cada pessoa
+    quemVaiLevar.forEach(novo => {
+      lista = lista.filter(obj => obj.nome !== novo.nome);
+      lista.push({ nome: novo.nome, quantidade: novo.quantidade });
+    });
+    // Soma das quantidades
+    const soma = lista.reduce((acc, obj) => acc + (obj.quantidade || 0), 0);
+    if (soma > totalDisponivel) {
+      return {
+        statusCode: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: `A soma das quantidades (${soma}) excede o total disponível (${totalDisponivel})!` }),
+      };
+    }
+    updateFields.quemVaiLevar = lista;
   }
 
-  if (unidade !== undefined) {
-    UpdateExpression.push("unidade = :u");
-    ExpressionAttributeValues[":u"] = unidade;
-  }
-
-  if (quemVaiLevar !== undefined) {
-    UpdateExpression.push("SET quemVaiLevar = list_append(if_not_exists(quemVaiLevar, :emptyList), :p)");
-    ExpressionAttributeValues[":p"] = quemVaiLevar;
-    ExpressionAttributeValues[":emptyList"] = [];
-  }
-
-  if (UpdateExpression.length === 0) {
+  if (Object.keys(updateFields).length === 0) {
     return {
       statusCode: 400,
       headers: { "Access-Control-Allow-Origin": "*" },
@@ -49,10 +63,20 @@ exports.handler = async (event) => {
     };
   }
 
+  // Monta UpdateExpression dinamicamente
+  let UpdateExpression = 'SET ' + Object.keys(updateFields).map((k, idx) => `#${k} = :${k}`).join(', ');
+  let ExpressionAttributeNames = {};
+  let ExpressionAttributeValues = {};
+  Object.keys(updateFields).forEach(k => {
+    ExpressionAttributeNames[`#${k}`] = k;
+    ExpressionAttributeValues[`:${k}`] = updateFields[k];
+  });
+
   await docClient.update({
     TableName: "PizzaPartyItems",
     Key: { item },
-    UpdateExpression: UpdateExpression.join(", "),
+    UpdateExpression,
+    ExpressionAttributeNames,
     ExpressionAttributeValues,
     ReturnValues: "UPDATED_NEW"
   }).promise();

@@ -3,29 +3,21 @@
 set -e
 
 echo "🔄 Limpando zips antigos..."
-rm -f infra/lambda/*.zip
+rm -f ./backend/event-manager/*.zip
 
-echo "📦 Empacotando Lambdas..."
+echo "📦 Empacotando ..."
 
-cd infra/lambda
 
-echo "📦 Empacotando GET"
-cd get_items && zip -r ../get_items.zip . 
-cd ..
+echo "📦 Buildando Lambda event-manager..."
+cd backend/event-manager
 
-echo "📦 Empacotando ADD"
-cd add_item && zip -r ../add_item.zip . 
-cd ..
+npm i
+npm run build
 
-echo "📦 Empacotando UPDATE"
-cd update_item && zip -r ../update_item.zip . 
-cd ..
-
-echo "📦 Empacotando PATCH 1"
-cd patch_item 
-echo "📦 Empacotando PATCH 2"
-zip -r ../patch_item.zip . 
-cd ../..
+echo "📦 Empacotando Lambda event-manager..."
+zip -r event_manager.zip dist node_modules
+cd ../../
+cd infra
 
 echo "🧹 Limpando cache do Terraform..."
 rm -rf .terraform .terraform.lock.hcl
@@ -37,7 +29,7 @@ echo "✅ Executando Terraform Apply..."
 terraform apply -auto-approve
 
 echo "🌐 Atualizando .env.production com a URL da API..."
-API_URL=$(terraform output -raw pizza_api_url)
+API_URL=$(terraform output -raw event_manager_api_url)
 cd ../frontend
 
 echo "REACT_APP_API_URL=$API_URL" > .env.production

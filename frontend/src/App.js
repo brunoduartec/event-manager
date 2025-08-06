@@ -29,14 +29,18 @@ function App() {
 };
 
   const handleLevar = (item) => {
+    const qtdStr = prompt("Quantos você quer levar?");
+    const quantidade = parseInt(qtdStr, 10);
+    if (!quantidade || quantidade < 1) return;
     fetch(`${API_URL}/items/${encodeURIComponent(item)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quemVaiLevar: [nome] }),
+      body: JSON.stringify({ quemVaiLevar: [nome], quantidade }),
     }).then(() => {
       const updated = items.map(i => i.item === item ? {
         ...i,
-        quemVaiLevar: [...(i.quemVaiLevar || []), nome]
+        quemVaiLevar: [...(i.quemVaiLevar || []), nome],
+        quantidade: (i.quantidade || 0) + quantidade
       } : i);
       setItems(updated);
     });
