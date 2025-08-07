@@ -14,6 +14,7 @@ function App() {
 
   useEffect(() => {
     if (!nome) return;
+    setLoading(true);
     fetch(`${API_URL}/items`)
       .then(res => res.json())
       .then(data => {
@@ -29,35 +30,48 @@ function App() {
 };
 
   const handleLevar = (item) => {
-    const qtdStr = prompt("Quantos você quer levar?");
-    const quantidade = parseInt(qtdStr, 10);
-    if (!quantidade || quantidade < 1) return;
-    fetch(`${API_URL}/items/${encodeURIComponent(item)}`, {
+    fetch(`${API_URL}/items/${encodeURIComponent(item)}/levar`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quemVaiLevar: [nome], quantidade }),
-    }).then(() => {
-      const updated = items.map(i => i.item === item ? {
-        ...i,
-        quemVaiLevar: [...(i.quemVaiLevar || []), nome],
-        quantidade: (i.quantidade || 0) + quantidade
-      } : i);
-      setItems(updated);
-    });
+      body: JSON.stringify({ nome }),
+    })
+      .then(res => res.ok ? res.json() : Promise.reject(res))
+      .then(() => {
+        // Refaz o fetch dos itens para garantir consistência
+        fetch(`${API_URL}/items`)
+          .then(res => res.json())
+          .then(data => setItems(data));
+      })
+      .catch(async (err) => {
+        let msg = "Erro ao levar item.";
+        if (err.json) {
+          const data = await err.json();
+          msg = data?.error || msg;
+        }
+        alert(msg);
+      });
   };
 
   const handleDesistir = (item) => {
-    fetch(`${API_URL}/items/${encodeURIComponent(item)}`, {
-      method: "PATCH",
+    fetch(`${API_URL}/items/${encodeURIComponent(item)}/desistir`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ remover: nome }),
-    }).then(() => {
-      const updated = items.map(i => i.item === item ? {
-        ...i,
-        quemVaiLevar: (i.quemVaiLevar || []).filter(n => n !== nome)
-      } : i);
-      setItems(updated);
-    });
+      body: JSON.stringify({ nome }),
+    })
+      .then(res => res.ok ? res.json() : Promise.reject(res))
+      .then(() => {
+        fetch(`${API_URL}/items`)
+          .then(res => res.json())
+          .then(data => setItems(data));
+      })
+      .catch(async (err) => {
+        let msg = "Erro ao desistir.";
+        if (err.json) {
+          const data = await err.json();
+          msg = data?.error || msg;
+        }
+        alert(msg);
+      });
   };
 
   if (!nome) {
