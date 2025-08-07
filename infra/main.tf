@@ -36,8 +36,18 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:*"]
-        Resource = aws_dynamodb_table.event-manager_items.arn
+        Action   = [
+          "dynamodb:Scan",
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.event-manager_items.arn,
+          "${aws_dynamodb_table.event-manager_items.arn}/*"
+        ]
       }
     ]
   })
