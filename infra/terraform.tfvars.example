@@ -1,0 +1,6 @@
+# Copy this file to terraform.tfvars and update the email
+budget_email = "seu-email@exemplo.com"
+# monthly limit in USD
+budget_limit_amount = "1"
+# threshold value in USD that triggers the notification
+budget_threshold_value = 0.01

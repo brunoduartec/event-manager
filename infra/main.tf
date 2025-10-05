@@ -129,6 +129,18 @@ resource "aws_s3_bucket" "event-manager_site" {
   }
 }
 
+# Website configuration for static site
+resource "aws_s3_bucket_website_configuration" "event-manager_site_website" {
+  bucket = aws_s3_bucket.event-manager_site.id
+
+  index_document {
+    suffix = "index.html"
+  }
+  error_document {
+    key = "index.html"
+  }
+}
+
 resource "aws_s3_bucket_ownership_controls" "event-manager_site_controls" {
   bucket = aws_s3_bucket.event-manager_site.id
 
@@ -160,9 +172,8 @@ resource "aws_s3_bucket_policy" "event-manager_site_policy" {
 }
 
 
-# Outputs
 output "s3_static_site_url" {
-  value = aws_s3_bucket.event-manager_site.bucket_regional_domain_name
+  value = aws_s3_bucket.event-manager_site.website_endpoint
 }
 
 output "s3_bucket_name" {
