@@ -2,25 +2,13 @@ provider "aws" {
   region = "sa-east-1"
 }
 
-data "local_file" "raw_index" {
-  filename = "${path.module}/../frontend/index.html"
-}
-
-locals {
-  index_with_api = replace(
-    data.local_file.raw_index.content,
-    "__API_URL__",
-    "${aws_apigatewayv2_api.http_api.api_endpoint}/${aws_apigatewayv2_stage.prod.name}"
-  )
-}
-
 resource "random_id" "suffix" {
   byte_length = 4
 }
 
 # IAM
 resource "aws_iam_role" "lambda_role" {
-  name = "lambda_pizza_role"
+  name = "lambda_event-manager_role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -48,16 +36,26 @@ resource "aws_iam_role_policy" "dynamodb_policy" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:*"]
-        Resource = aws_dynamodb_table.pizza_items.arn
+        Action   = [
+          "dynamodb:Scan",
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.event-manager_items.arn,
+          "${aws_dynamodb_table.event-manager_items.arn}/*"
+        ]
       }
     ]
   })
 }
 
 # DynamoDB
-resource "aws_dynamodb_table" "pizza_items" {
-  name         = "PizzaPartyItems"
+resource "aws_dynamodb_table" "event-manager_items" {
+  name         = "EventManagerItems"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "item"
 
@@ -68,45 +66,18 @@ resource "aws_dynamodb_table" "pizza_items" {
 }
 
 # Lambda Functions
-resource "aws_lambda_function" "get_items" {
-  filename         = "${path.module}/lambda/get_items.zip"
-  function_name    = "get_items"
-  handler          = "index.handler"
-  runtime          = "nodejs18.x"
+resource "aws_lambda_function" "event_manager" {
+  filename         = "${path.module}/../backend/event-manager/event_manager.zip"
+  function_name    = "event_manager"
+  handler          = "dist/lambda.handler"
+  runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
-  source_code_hash = filebase64sha256("${path.module}/lambda/get_items.zip")
-}
-
-resource "aws_lambda_function" "add_item" {
-  filename         = "${path.module}/lambda/add_item.zip"
-  function_name    = "add_item"
-  handler          = "index.handler"
-  runtime          = "nodejs18.x"
-  role             = aws_iam_role.lambda_role.arn
-  source_code_hash = filebase64sha256("${path.module}/lambda/add_item.zip")
-}
-
-resource "aws_lambda_function" "update_item" {
-  filename         = "${path.module}/lambda/update_item.zip"
-  function_name    = "update_item"
-  handler          = "index.handler"
-  runtime          = "nodejs18.x"
-  role             = aws_iam_role.lambda_role.arn
-  source_code_hash = filebase64sha256("${path.module}/lambda/update_item.zip")
-}
-
-resource "aws_lambda_function" "patch_item" {
-  filename         = "${path.module}/lambda/patch_item.zip"
-  function_name    = "patch_item"
-  handler          = "index.handler"
-  runtime          = "nodejs18.x"
-  role             = aws_iam_role.lambda_role.arn
-  source_code_hash = filebase64sha256("${path.module}/lambda/patch_item.zip")
+  source_code_hash = filebase64sha256("${path.module}/../backend/event-manager/event_manager.zip")
 }
 
 # API Gateway
 resource "aws_apigatewayv2_api" "http_api" {
-  name          = "pizza-api"
+  name          = "event-manager"
   protocol_type = "HTTP"
 
   cors_configuration {
@@ -116,60 +87,18 @@ resource "aws_apigatewayv2_api" "http_api" {
   }
 }
 
-resource "aws_apigatewayv2_integration" "get_items" {
+resource "aws_apigatewayv2_integration" "event_manager" {
   api_id                 = aws_apigatewayv2_api.http_api.id
   integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.get_items.invoke_arn
+  integration_uri        = aws_lambda_function.event_manager.invoke_arn
   integration_method     = "POST"
   payload_format_version = "2.0"
 }
 
-resource "aws_apigatewayv2_integration" "add_item" {
-  api_id                 = aws_apigatewayv2_api.http_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.add_item.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
-}
-
-resource "aws_apigatewayv2_integration" "update_item" {
-  api_id                 = aws_apigatewayv2_api.http_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.update_item.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
-}
-
-resource "aws_apigatewayv2_integration" "patch_item" {
-  api_id                 = aws_apigatewayv2_api.http_api.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.patch_item.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
-}
-
-resource "aws_apigatewayv2_route" "get_items_route" {
+resource "aws_apigatewayv2_route" "event_manager_default_route" {
   api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "GET /items"
-  target    = "integrations/${aws_apigatewayv2_integration.get_items.id}"
-}
-
-resource "aws_apigatewayv2_route" "add_item_route" {
-  api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "POST /items/{item}"
-  target    = "integrations/${aws_apigatewayv2_integration.add_item.id}"
-}
-
-resource "aws_apigatewayv2_route" "update_item_route" {
-  api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "PUT /items/{item}"
-  target    = "integrations/${aws_apigatewayv2_integration.update_item.id}"
-}
-
-resource "aws_apigatewayv2_route" "patch_item_route" {
-  api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "PATCH /items/{item}"
-  target    = "integrations/${aws_apigatewayv2_integration.patch_item.id}"
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.event_manager.id}"
 }
 
 resource "aws_apigatewayv2_stage" "prod" {
@@ -178,41 +107,17 @@ resource "aws_apigatewayv2_stage" "prod" {
   auto_deploy = true
 }
 
-resource "aws_lambda_permission" "api_get_items" {
-  statement_id  = "AllowAPIGatewayInvokeGet"
+resource "aws_lambda_permission" "api_event_manager" {
+  statement_id  = "AllowAPIGatewayInvokeEventManager"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.get_items.arn
+  function_name = aws_lambda_function.event_manager.arn
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_add_item" {
-  statement_id  = "AllowAPIGatewayInvokePost"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.add_item.arn
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_update_item" {
-  statement_id  = "AllowAPIGatewayInvokePut"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.update_item.arn
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_patch_item" {
-  statement_id  = "AllowAPIGatewayInvokePatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.patch_item.arn
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*"
 }
 
 # S3 Static Site
-resource "aws_s3_bucket" "pizza_site" {
-  bucket = "pizza-party-site-${random_id.suffix.hex}"
+resource "aws_s3_bucket" "event-manager_site" {
+  bucket = "event-manager-party-site-${random_id.suffix.hex}"
 
   website {
     index_document = "index.html"
@@ -220,28 +125,40 @@ resource "aws_s3_bucket" "pizza_site" {
   }
 
   tags = {
-    Name = "PizzaPartyStaticSite"
+    Name = "EventManagerStaticSite"
   }
 }
 
-resource "aws_s3_bucket_ownership_controls" "pizza_site_controls" {
-  bucket = aws_s3_bucket.pizza_site.id
+# Website configuration for static site
+resource "aws_s3_bucket_website_configuration" "event-manager_site_website" {
+  bucket = aws_s3_bucket.event-manager_site.id
+
+  index_document {
+    suffix = "index.html"
+  }
+  error_document {
+    key = "index.html"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "event-manager_site_controls" {
+  bucket = aws_s3_bucket.event-manager_site.id
 
   rule {
     object_ownership = "BucketOwnerEnforced"
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "pizza_site_block" {
-  bucket                  = aws_s3_bucket.pizza_site.id
+resource "aws_s3_bucket_public_access_block" "event-manager_site_block" {
+  bucket                  = aws_s3_bucket.event-manager_site.id
   block_public_acls       = false
   block_public_policy     = false
   ignore_public_acls      = false
   restrict_public_buckets = false
 }
 
-resource "aws_s3_bucket_policy" "pizza_site_policy" {
-  bucket = aws_s3_bucket.pizza_site.id
+resource "aws_s3_bucket_policy" "event-manager_site_policy" {
+  bucket = aws_s3_bucket.event-manager_site.id
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -249,20 +166,20 @@ resource "aws_s3_bucket_policy" "pizza_site_policy" {
       Effect = "Allow",
       Principal = "*",
       Action = ["s3:GetObject"],
-      Resource = "${aws_s3_bucket.pizza_site.arn}/*"
+      Resource = "${aws_s3_bucket.event-manager_site.arn}/*"
     }]
   })
 }
 
-# Outputs
+
 output "s3_static_site_url" {
-  value = aws_s3_bucket.pizza_site.bucket_regional_domain_name
+  value = aws_s3_bucket.event-manager_site.website_endpoint
 }
 
 output "s3_bucket_name" {
-  value = aws_s3_bucket.pizza_site.id
+  value = aws_s3_bucket.event-manager_site.id
 }
 
-output "pizza_api_url" {
+output "event_manager_api_url" {
   value = "${aws_apigatewayv2_api.http_api.api_endpoint}/${aws_apigatewayv2_stage.prod.name}"
 }

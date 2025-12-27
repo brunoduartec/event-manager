@@ -3,29 +3,21 @@
 set -e
 
 echo "🔄 Limpando zips antigos..."
-rm -f infra/lambda/*.zip
+rm -f ./backend/event-manager/*.zip
 
-echo "📦 Empacotando Lambdas..."
+echo "📦 Empacotando ..."
 
-cd infra/lambda
 
-echo "📦 Empacotando GET"
-cd get_items && zip -r ../get_items.zip . 
-cd ..
+echo "📦 Buildando Lambda event-manager..."
+cd backend/event-manager
 
-echo "📦 Empacotando ADD"
-cd add_item && zip -r ../add_item.zip . 
-cd ..
+npm i
+npm run build
 
-echo "📦 Empacotando UPDATE"
-cd update_item && zip -r ../update_item.zip . 
-cd ..
-
-echo "📦 Empacotando PATCH 1"
-cd patch_item 
-echo "📦 Empacotando PATCH 2"
-zip -r ../patch_item.zip . 
-cd ../..
+echo "📦 Empacotando Lambda event-manager..."
+zip -r event_manager.zip dist node_modules
+cd ../../
+cd infra
 
 echo "🧹 Limpando cache do Terraform..."
 rm -rf .terraform .terraform.lock.hcl
@@ -36,13 +28,18 @@ terraform init
 echo "✅ Executando Terraform Apply..."
 terraform apply -auto-approve
 
-echo "🔄 Atualizando index.html com URL da API..."
+echo "🌐 Atualizando .env.production com a URL da API..."
+API_URL=$(terraform output -raw event_manager_api_url)
+cd ../frontend
 
-API_URL=$(terraform output -raw pizza_api_url)
+echo "NEXT_PUBLIC_API_URL=$API_URL" > .env.production
+
+echo "⚛️ Instalando dependências e buildando frontend Next.js..."
+npm install
+npm run build
+
+cd ../infra
 NOME_DO_SEU_BUCKET=$(terraform output -raw s3_bucket_name)
 
-# Substitui o marcador __API_URL__ pelo valor real no arquivo index.html
-sed "s|__API_URL__|$API_URL|g" ../frontend/index.template.html > ../frontend/index.html
-
-echo "📤 Subindo index.html para o S3..."
-aws s3 cp ../frontend/index.html s3://$NOME_DO_SEU_BUCKET/index.html
+echo "📤 Subindo build do Next.js (pasta out) para o S3..."
+aws s3 sync ../frontend/out/ s3://$NOME_DO_SEU_BUCKET --delete

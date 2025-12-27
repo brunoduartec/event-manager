@@ -5,16 +5,17 @@ const docClient = new AWS.DynamoDB.DocumentClient({ convertEmptyValues: true });
 exports.handler = async (event) => {
   const item = decodeURIComponent(event.pathParameters.item);
   const body = JSON.parse(event.body);
-  const { quantidade, unidade, quemVaiLevar, remover } = body;
+  const { quantidade, unidade_padrao, unidade_medida, quemVaiLevar, remover } = body;
 
   const schema = Joi.object({
     quantidade: Joi.number().integer().min(1).optional(),
-    unidade: Joi.string().min(1).optional(),
+    unidade_padrao: Joi.string().min(1).optional(),
+    unidade_medida: Joi.string().min(1).optional(),
     quemVaiLevar: Joi.array().items(Joi.string().min(1)).optional(),
     remover: Joi.string().min(1).optional()
   });
 
-  const { error } = schema.validate({ quantidade, unidade, quemVaiLevar, remover });
+  const { error } = schema.validate({ quantidade, unidade_padrao, unidade_medida, quemVaiLevar, remover });
   if (error) {
     return {
       statusCode: 400,
@@ -33,16 +34,20 @@ exports.handler = async (event) => {
     ExpressionAttributeNames["#q"] = "quantidade";
   }
 
-  if (unidade !== undefined) {
+  if (unidade_padrao !== undefined) {
     UpdateExpression.push("#u = :u");
-    ExpressionAttributeValues[":u"] = unidade;
-    ExpressionAttributeNames["#u"] = "unidade";
+    ExpressionAttributeValues[":u"] = unidade_padrao;
+    ExpressionAttributeNames["#u"] = "unidade_padrao";
+  }
+
+  if (unidade_medida !== undefined) {
+    UpdateExpression.push("#u = :u");
+    ExpressionAttributeValues[":u"] = unidade_medida;
+    ExpressionAttributeNames["#u"] = "unidade_medida";
   }
 
   if (quemVaiLevar !== undefined) {
-    UpdateExpression.push("quemVaiLevar = list_append(if_not_exists(quemVaiLevar, :emptyList), :p)");
-    ExpressionAttributeValues[":p"] = quemVaiLevar;
-    ExpressionAttributeValues[":emptyList"] = [];
+    // Não implementado: PATCH para adicionar pessoa. Use PUT/update_item para adicionar/atualizar.
   }
 
   if (remover !== undefined) {
@@ -51,12 +56,14 @@ exports.handler = async (event) => {
       Key: { item }
     }).promise();
 
-    const listaAtual = data.Item?.quemVaiLevar || [];
-    const novaLista = listaAtual.filter(nome => nome !== remover);
+    const listaAtual = Array.isArray(data.Item?.quemVaiLevar) ? data.Item.quemVaiLevar : [];
+    // Remove pelo nome
+    const novaLista = listaAtual.filter(obj => obj.nome !== remover);
 
     if (JSON.stringify(listaAtual) !== JSON.stringify(novaLista)) {
-      UpdateExpression.push("quemVaiLevar = :novaLista");
+      UpdateExpression.push("#quemVaiLevar = :novaLista");
       ExpressionAttributeValues[":novaLista"] = novaLista;
+      ExpressionAttributeNames["#quemVaiLevar"] = "quemVaiLevar";
     }
   }
 

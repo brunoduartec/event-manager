@@ -4,17 +4,19 @@ const { DynamoDB } = require("aws-sdk");
 const docClient = new DynamoDB.DocumentClient();
 
 exports.handler = async (event) => {
-  const item = decodeURIComponent(event.pathParameters.item);
-  const body = JSON.parse(event.body);
-  const { quantidade, unidade, name } = body;
+  const items = JSON.parse(event.body);
 
-  const schema = Joi.object({
-    name: Joi.string().min(1).optional(),
-    quantidade: Joi.number().integer().min(1).required(),
-    unidade: Joi.string().min(1).required()
-  });
+  const schema = Joi.array().items(
+    Joi.object({
+      item: Joi.string().min(1).required(),
+      quantidade: Joi.number().integer().min(1).required(),
+      unidade_padrao: Joi.string().min(1).required(),
+      unidade_medida: Joi.string().min(1).required(),
+      name: Joi.string().min(1).optional()
+    })
+  );
 
-  const { error } = schema.validate({ name, quantidade, unidade });
+  const { error } = schema.validate(items);
   if (error) {
     return {
       statusCode: 400,
@@ -23,23 +25,28 @@ exports.handler = async (event) => {
     };
   }
 
-  const updateParams = {
-    TableName: "PizzaPartyItems",
-    Key: { item },
-    UpdateExpression: "SET quantidade = if_not_exists(quantidade, :q), unidade = if_not_exists(unidade, :u)",
-    ExpressionAttributeValues: {
-      ":q": quantidade,
-      ":u": unidade
-    },
-    ReturnValues: "UPDATED_NEW"
+  const updateItem = async ({ item, quantidade, unidade_padrao, unidade_medida,  name }) => {
+    const params = {
+      TableName: "PizzaPartyItems",
+      Key: { item },
+      UpdateExpression: "SET quantidade = if_not_exists(quantidade, :q), unidade_padrao = if_not_exists(unidade_padrao, :u), unidade_medida = if_not_exists(unidade_medida, :m)",
+      ExpressionAttributeValues: {
+        ":q": quantidade,
+        ":u": unidade_padrao,
+        ":m": unidade_medida
+      },
+      ReturnValues: "UPDATED_NEW"
+    };
+
+    if (name) {
+      params.UpdateExpression = "ADD quemVaiLevar :p, " + params.UpdateExpression;
+      params.ExpressionAttributeValues[":p"] = docClient.createSet([name]);
+    }
+
+    return docClient.update(params).promise();
   };
 
-  if (name) {
-    updateParams.UpdateExpression = "ADD quemVaiLevar :p, " + updateParams.UpdateExpression;
-    updateParams.ExpressionAttributeValues[":p"] = docClient.createSet([name]);
-  }
-
-  await docClient.update(updateParams).promise();
+  await Promise.all(items.map(updateItem));
 
   return {
     statusCode: 200,
